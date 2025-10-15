@@ -2,11 +2,27 @@
 import React, { useState, useCallback } from 'react';
 import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
+import { ImageGenerator } from './components/ImageGenerator';
 import { ControlPanel } from './components/ControlPanel';
 import { ImageViewer } from './components/ImageViewer';
 import { editImage } from './services/geminiService';
 import { EditingTool } from './types';
 import { TOOLS } from './constants';
+import { PencilSquareIcon, SparklesIcon } from './components/IconComponents';
+
+// Fix: Moved TabButton component outside of the App component to resolve typing errors and follow React best practices.
+const TabButton = ({ isActive, onClick, children }: { isActive: boolean, onClick: () => void, children: React.ReactNode }) => (
+  <button
+    onClick={onClick}
+    className={`flex-1 sm:flex-none flex items-center justify-center space-x-2 px-6 py-3 font-semibold border-b-2 transition-colors duration-200 focus:outline-none ${
+      isActive
+        ? 'text-cyan-400 border-cyan-400'
+        : 'text-gray-400 border-transparent hover:text-white'
+    }`}
+  >
+    {children}
+  </button>
+);
 
 const App: React.FC = () => {
   const [originalImage, setOriginalImage] = useState<{ data: string; mimeType: string; } | null>(null);
@@ -14,6 +30,7 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<EditingTool | null>(null);
+  const [mode, setMode] = useState<'edit' | 'generate'>('edit');
 
   const handleImageUpload = (file: File) => {
     const reader = new FileReader();
@@ -70,7 +87,22 @@ const App: React.FC = () => {
       <Header />
       <main className="flex-grow flex flex-col items-center justify-center p-4 md:p-8">
         {!originalImage ? (
-          <ImageUploader onImageUpload={handleImageUpload} />
+          <div className="w-full max-w-2xl">
+            <div className="flex justify-center border-b border-gray-700">
+               <TabButton isActive={mode === 'edit'} onClick={() => setMode('edit')}>
+                  <PencilSquareIcon className="w-5 h-5" />
+                  <span>Edit Photo</span>
+               </TabButton>
+               <TabButton isActive={mode === 'generate'} onClick={() => setMode('generate')}>
+                  <SparklesIcon className="w-5 h-5" />
+                  <span>Generate with AI</span>
+               </TabButton>
+            </div>
+            <div className="pt-8">
+              {mode === 'edit' && <ImageUploader onImageUpload={handleImageUpload} />}
+              {mode === 'generate' && <ImageGenerator />}
+            </div>
+          </div>
         ) : (
           <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
             <div className="lg:col-span-4 xl:col-span-3">

@@ -54,3 +54,34 @@ export const editImage = async (
     throw new Error("An unknown error occurred while processing the image.");
   }
 };
+
+export const generateImage = async (prompt: string): Promise<string> => {
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+              numberOfImages: 1,
+              outputMimeType: 'image/jpeg',
+              aspectRatio: '1:1',
+            },
+        });
+
+        const image = response.generatedImages?.[0]?.image?.imageBytes;
+
+        if (image) {
+            return image;
+        } else {
+            throw new Error("No image data received from the API. The model may have refused the request.");
+        }
+    } catch (error) {
+        console.error("Error calling Gemini API for image generation:", error);
+        if (error instanceof Error) {
+            if (error.message.includes('429')) {
+                throw new Error("API request limit reached. Please try again later.");
+            }
+            throw new Error(`Gemini API Error: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred while generating the image.");
+    }
+};
