@@ -176,7 +176,7 @@ export const VideoGenerator: React.FC = () => {
     try {
       const videoPromise = sourceVideo 
         ? remixVideo(sourceVideo.file, prompt)
-        : generateVideo(prompt, aspectRatio, 8);
+        : generateVideo(prompt, aspectRatio);
 
       const audioPromise = voiceOverText.trim() && !sourceVideo
         ? generateSpeech(voiceOverText)

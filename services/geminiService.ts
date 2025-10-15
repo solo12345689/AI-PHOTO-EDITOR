@@ -99,12 +99,23 @@ export const editImage = async (
       },
     });
 
+    if (response.promptFeedback?.blockReason) {
+        throw new Error(`Image editing was blocked due to safety policies (${response.promptFeedback.blockReason}). Please adjust your prompt.`);
+    }
+
     const firstPart = response.candidates?.[0]?.content?.parts?.[0];
 
     if (firstPart && firstPart.inlineData) {
       return firstPart.inlineData.data;
     } else {
-      throw new Error("No image data received from the API. The model may have refused the request.");
+      const finishReason = response.candidates?.[0]?.finishReason;
+      if (finishReason === 'SAFETY') {
+        throw new Error("Image editing failed due to safety policies. Please adjust your prompt.");
+      }
+      if (finishReason && finishReason !== 'STOP') {
+        throw new Error(`Image editing failed. Reason: ${finishReason}.`);
+      }
+      throw new Error("No image data received from the API. The model may have refused the request, possibly due to safety policies. Please try rephrasing your prompt.");
     }
   } catch (error) {
     console.error("Error calling Gemini API:", error);
@@ -129,13 +140,14 @@ export const generateImage = async (prompt: string): Promise<string> => {
               aspectRatio: '1:1',
             },
         });
-
+        
         const image = response.generatedImages?.[0]?.image?.imageBytes;
 
         if (image) {
             return image;
         } else {
-            throw new Error("No image data received from the API. The model may have refused the request.");
+            // This case often indicates a safety policy violation.
+            throw new Error("No image data received from the API. This can happen if the prompt violates safety policies. Please try rephrasing your prompt.");
         }
     } catch (error) {
         console.error("Error calling Gemini API for image generation:", error);
@@ -149,15 +161,14 @@ export const generateImage = async (prompt: string): Promise<string> => {
     }
 };
 
-export const generateVideo = async (prompt: string, aspectRatio: string, durationSecs: number): Promise<string> => {
+export const generateVideo = async (prompt: string, aspectRatio: string): Promise<string> => {
     try {
         let operation = await ai.models.generateVideos({
-            model: 'veo-2.0-generate-001',
+            model: 'veo-3.1-fast-generate-preview',
             prompt: prompt,
             config: {
                 numberOfVideos: 1,
                 aspectRatio: aspectRatio,
-                durationSecs: durationSecs,
             }
         });
 
@@ -165,11 +176,20 @@ export const generateVideo = async (prompt: string, aspectRatio: string, duratio
             await new Promise(resolve => setTimeout(resolve, 10000));
             operation = await ai.operations.getVideosOperation({ operation: operation });
         }
+        
+        if (operation.error) {
+            // The error message from the API is often descriptive, especially for safety violations.
+            throw new Error(`Video generation failed: ${operation.error.message}`);
+        }
 
         const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
 
         if (!downloadLink) {
-            throw new Error("Video generation completed, but no download link was provided.");
+            const blockReason = (operation.response as any)?.promptFeedback?.blockReason;
+            if (blockReason) {
+                throw new Error(`Video generation was blocked due to safety policies (${blockReason}). Please adjust your prompt.`);
+            }
+            throw new Error("Video generation completed, but no download link was provided. This might be due to a safety policy violation.");
         }
 
         const videoResponse = await fetch(`${downloadLink}&key=${API_KEY}`);
@@ -197,7 +217,7 @@ export const remixVideo = async (videoFile: File, prompt: string): Promise<strin
         const { base64Data, mimeType } = await extractFrameFromVideo(videoFile);
         
         let operation = await ai.models.generateVideos({
-            model: 'veo-2.0-generate-001',
+            model: 'veo-3.1-fast-generate-preview',
             prompt: prompt,
             image: {
                 imageBytes: base64Data,
@@ -205,7 +225,6 @@ export const remixVideo = async (videoFile: File, prompt: string): Promise<strin
             },
             config: {
                 numberOfVideos: 1,
-                durationSecs: 8, // Using a default duration for remixes
             }
         });
 
@@ -213,11 +232,20 @@ export const remixVideo = async (videoFile: File, prompt: string): Promise<strin
             await new Promise(resolve => setTimeout(resolve, 5000)); // Polling more frequently
             operation = await ai.operations.getVideosOperation({ operation: operation });
         }
+        
+        if (operation.error) {
+            // The error message from the API is often descriptive.
+            throw new Error(`Video remix failed: ${operation.error.message}`);
+        }
 
         const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
 
         if (!downloadLink) {
-            throw new Error("Video remix completed, but no download link was provided.");
+            const blockReason = (operation.response as any)?.promptFeedback?.blockReason;
+            if (blockReason) {
+                throw new Error(`Video remix was blocked due to safety policies (${blockReason}). Please adjust your prompt.`);
+            }
+            throw new Error("Video remix completed, but no download link was provided. This might be due to a safety policy violation.");
         }
 
         const videoResponse = await fetch(`${downloadLink}&key=${API_KEY}`);
