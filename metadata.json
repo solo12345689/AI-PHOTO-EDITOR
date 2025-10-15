@@ -1,5 +1,5 @@
 {
   "name": " AI Photo Studio",
-  "description": "An AI-powered photo editor that allows users to upload images and apply a variety of enhancements, edits, and transformations using the Gemini API. Features include automatic enhancement, background editing, object removal, AI filters, and text-to-image modifications.",
+  "description": "An AI-powered photo and video editor. Allows users to upload images and videos to apply a variety of enhancements, edits, and transformations. Features include automatic enhancement, background editing, object removal, AI filters, text-to-image/video generation, and video remixing.",
   "requestFramePermissions": []
 }
