@@ -3,15 +3,12 @@ import { Header } from './components/Header';
 import { ImageUploader } from './components/ImageUploader';
 import { ImageGenerator } from './components/ImageGenerator';
 import { VideoGenerator } from './components/VideoGenerator';
-import { VideoUploader } from './components/VideoUploader';
 import { ControlPanel } from './components/ControlPanel';
 import { ImageViewer } from './components/ImageViewer';
-import { VideoControlPanel } from './components/VideoControlPanel';
-import { VideoViewer } from './components/VideoViewer';
-import { editImage, remixVideo } from './services/geminiService';
+import { editImage } from './services/geminiService';
 import { EditingTool } from './types';
 import { TOOLS } from './constants';
-import { PencilSquareIcon, SparklesIcon, VideoCameraIcon, FilmIcon } from './components/IconComponents';
+import { PencilSquareIcon, SparklesIcon, VideoCameraIcon } from './components/IconComponents';
 
 const TabButton = ({ isActive, onClick, children }: React.PropsWithChildren<{ isActive: boolean, onClick: () => void }>) => (
   <button
@@ -27,17 +24,13 @@ const TabButton = ({ isActive, onClick, children }: React.PropsWithChildren<{ is
   </button>
 );
 
-type Mode = 'edit-photo' | 'generate-image' | 'generate-video' | 'remix-video';
+type Mode = 'edit-photo' | 'generate-image' | 'generate-video';
 
 const App: React.FC = () => {
   // Image state
   const [originalImage, setOriginalImage] = useState<{ data: string; mimeType: string; } | null>(null);
   const [editedImage, setEditedImage] = useState<string | null>(null);
   
-  // Video state
-  const [originalVideo, setOriginalVideo] = useState<{ file: File; dataUrl: string; } | null>(null);
-  const [remixedVideoUrl, setRemixedVideoUrl] = useState<string | null>(null);
-
   // Common state
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,11 +49,6 @@ const App: React.FC = () => {
       setError("Failed to read the image file.");
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleVideoUpload = (file: File) => {
-    setOriginalVideo({ file, dataUrl: URL.createObjectURL(file) });
-    setError(null);
   };
   
   const handleApplyImageEdit = useCallback(async (tool: EditingTool, customPrompt?: string) => {
@@ -86,35 +74,9 @@ const App: React.FC = () => {
     }
   }, [originalImage]);
 
-  const handleApplyVideoRemix = useCallback(async (prompt: string, duration: number) => {
-    if (!originalVideo) return;
-
-    setIsLoading(true);
-    setError(null);
-    setRemixedVideoUrl(null);
-
-    try {
-      const resultUrl = await remixVideo(originalVideo.file, prompt, duration);
-      setRemixedVideoUrl(resultUrl);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'An unknown error occurred.');
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [originalVideo]);
-
   const handleResetImage = () => {
     setEditedImage(null);
     setActiveTool(null);
-    setError(null);
-  };
-
-  const handleResetVideo = () => {
-    if (remixedVideoUrl) {
-      URL.revokeObjectURL(remixedVideoUrl);
-    }
-    setRemixedVideoUrl(null);
     setError(null);
   };
 
@@ -122,14 +84,6 @@ const App: React.FC = () => {
     setOriginalImage(null);
     setEditedImage(null);
     setActiveTool(null);
-    if (originalVideo) {
-      URL.revokeObjectURL(originalVideo.dataUrl);
-    }
-    setOriginalVideo(null);
-    if (remixedVideoUrl) {
-      URL.revokeObjectURL(remixedVideoUrl);
-    }
-    setRemixedVideoUrl(null);
     setError(null);
   };
 
@@ -139,10 +93,6 @@ const App: React.FC = () => {
           <TabButton isActive={mode === 'edit-photo'} onClick={() => setMode('edit-photo')}>
             <PencilSquareIcon className="w-5 h-5" />
             <span>Edit Photo</span>
-          </TabButton>
-          <TabButton isActive={mode === 'remix-video'} onClick={() => setMode('remix-video')}>
-            <FilmIcon className="w-5 h-5" />
-            <span>Remix Video</span>
           </TabButton>
           <TabButton isActive={mode === 'generate-image'} onClick={() => setMode('generate-image')}>
             <SparklesIcon className="w-5 h-5" />
@@ -157,7 +107,6 @@ const App: React.FC = () => {
         {mode === 'edit-photo' && <ImageUploader onImageUpload={handleImageUpload} />}
         {mode === 'generate-image' && <ImageGenerator />}
         {mode === 'generate-video' && <VideoGenerator />}
-        {mode === 'remix-video' && <VideoUploader onVideoUpload={handleVideoUpload} />}
       </div>
     </div>
   );
@@ -185,35 +134,11 @@ const App: React.FC = () => {
     </div>
   );
 
-  const renderVideoEditor = () => (
-     <div className="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-      <div className="lg:col-span-4 xl:col-span-3">
-        <VideoControlPanel
-          onApplyRemix={handleApplyVideoRemix}
-          isLoading={isLoading}
-          onNewVideo={handleNewContent}
-        />
-      </div>
-      <div className="lg:col-span-8 xl:col-span-9">
-        <VideoViewer
-          originalVideoUrl={originalVideo!.dataUrl}
-          remixedVideoUrl={remixedVideoUrl}
-          isLoading={isLoading}
-          error={error}
-          onReset={handleResetVideo}
-        />
-      </div>
-    </div>
-  );
-
   return (
     <div className="bg-gray-900 text-gray-200 min-h-screen flex flex-col font-sans">
       <Header />
       <main className="flex-grow flex flex-col items-center justify-center p-4 md:p-8">
-        { !originalImage && !originalVideo ? renderInitialView() :
-          originalImage ? renderImageEditor() :
-          originalVideo ? renderVideoEditor() : null
-        }
+        { !originalImage ? renderInitialView() : renderImageEditor() }
       </main>
     </div>
   );

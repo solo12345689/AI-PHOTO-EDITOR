@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { generateVideo, generateSpeech } from '../services/geminiService';
-import { DownloadIcon, ArrowPathIcon, VideoCameraIcon } from './IconComponents';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { generateVideo, generateSpeech, remixVideo } from '../services/geminiService';
+import { DownloadIcon, ArrowPathIcon, VideoCameraIcon, UploadIcon, TrashIcon } from './IconComponents';
 
 const aspectRatios = ['16:9', '9:16', '1:1'];
 
@@ -91,8 +91,8 @@ export const VideoGenerator: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [voiceOverText, setVoiceOverText] = useState('');
   const [aspectRatio, setAspectRatio] = useState('16:9');
-  const [duration, setDuration] = useState(8);
-  
+  const [sourceVideo, setSourceVideo] = useState<{ file: File; url: string } | null>(null);
+
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [generatedAudioBuffer, setGeneratedAudioBuffer] = useState<AudioBuffer | null>(null);
   
@@ -108,7 +108,6 @@ export const VideoGenerator: React.FC = () => {
     const videoElement = videoRef.current;
     if (!videoElement || !generatedAudioBuffer) return;
 
-    // FIX: Cast window to any to access webkitAudioContext for older browser compatibility.
     const audioContext = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
     audioContextRef.current = audioContext;
     
@@ -145,6 +144,27 @@ export const VideoGenerator: React.FC = () => {
         pauseAudio();
     };
   }, [generatedAudioBuffer]);
+  
+  const processVideoFile = (file: File) => {
+    if (!file.type.startsWith('video/')) {
+        setError('Please select a valid video file (e.g., MP4, MOV).');
+        return;
+    }
+    setError(null);
+    setSourceVideo({ file, url: URL.createObjectURL(file) });
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) processVideoFile(file);
+  };
+  
+  const onDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = event.dataTransfer.files?.[0];
+    if (file) processVideoFile(file);
+  }, []);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -154,8 +174,11 @@ export const VideoGenerator: React.FC = () => {
     setGeneratedAudioBuffer(null);
 
     try {
-      const videoPromise = generateVideo(prompt, aspectRatio, duration);
-      const audioPromise = voiceOverText.trim() 
+      const videoPromise = sourceVideo 
+        ? remixVideo(sourceVideo.file, prompt)
+        : generateVideo(prompt, aspectRatio, 8);
+
+      const audioPromise = voiceOverText.trim() && !sourceVideo
         ? generateSpeech(voiceOverText)
         : Promise.resolve(null);
       
@@ -164,7 +187,6 @@ export const VideoGenerator: React.FC = () => {
       setGeneratedVideoUrl(videoUrl);
 
       if (audioBase64) {
-          // FIX: Cast window to any to access webkitAudioContext for older browser compatibility.
           const audioContext = audioContextRef.current ?? new (window.AudioContext || (window as any).webkitAudioContext)();
           audioContextRef.current = audioContext;
           const decodedData = decode(audioBase64);
@@ -279,8 +301,12 @@ export const VideoGenerator: React.FC = () => {
       if(generatedVideoUrl) {
           URL.revokeObjectURL(generatedVideoUrl);
       }
+      if(sourceVideo) {
+          URL.revokeObjectURL(sourceVideo.url);
+      }
       setPrompt('');
       setVoiceOverText('');
+      setSourceVideo(null);
       setGeneratedVideoUrl(null);
       setGeneratedAudioBuffer(null);
       setError(null);
@@ -291,7 +317,7 @@ export const VideoGenerator: React.FC = () => {
     return (
        <div className="w-full max-w-2xl text-center bg-gray-800 border-2 border-dashed border-gray-600 rounded-xl p-12 flex flex-col items-center justify-center min-h-[384px]">
             <div className="w-12 h-12 border-4 border-t-transparent border-cyan-400 rounded-full animate-spin"></div>
-            <p className="mt-4 text-lg font-semibold text-gray-300">Generating your video...</p>
+            <p className="mt-4 text-lg font-semibold text-gray-300">{sourceVideo ? 'Remixing your video...' : 'Generating your video...'}</p>
             <p className="mt-2 text-sm text-gray-400">This may take a few minutes. Please don't close this tab.</p>
        </div>
     );
@@ -355,64 +381,94 @@ export const VideoGenerator: React.FC = () => {
             <div className="bg-gray-700 p-4 rounded-full">
                 <VideoCameraIcon className="w-12 h-12 text-cyan-400" />
             </div>
-            <p className="text-lg font-semibold text-white">Describe the video you want to create</p>
+            <p className="text-lg font-semibold text-white">Describe the video you want to create or remix</p>
         </div>
+        
+        {sourceVideo ? (
+             <div className="relative w-full aspect-video bg-gray-900 rounded-lg overflow-hidden border border-gray-600">
+                <video src={sourceVideo.url} muted loop autoPlay className="w-full h-full object-contain" />
+                <button
+                    onClick={() => {
+                        URL.revokeObjectURL(sourceVideo.url);
+                        setSourceVideo(null);
+                    }}
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full hover:bg-black/80 transition-colors"
+                    aria-label="Remove video"
+                >
+                    <TrashIcon className="w-5 h-5" />
+                </button>
+             </div>
+        ) : (
+             <div 
+                className="bg-gray-900/50 border-2 border-dashed border-gray-700 rounded-lg p-6 hover:border-cyan-600 transition-colors duration-300 cursor-pointer"
+                onDrop={onDrop}
+                onDragOver={(e) => {e.preventDefault(); e.stopPropagation();}}
+                onClick={() => document.getElementById('video-remix-upload')?.click()}
+             >
+                <div className="flex flex-col items-center justify-center space-y-2 text-gray-400">
+                    <UploadIcon className="w-8 h-8"/>
+                    <p className="text-sm font-semibold">Start with a video to remix (Optional)</p>
+                    <p className="text-xs">Drag & drop or click to browse</p>
+                </div>
+                 <input id="video-remix-upload" type="file" accept="video/*" className="hidden" onChange={handleFileChange} />
+             </div>
+        )}
+        
         <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="e.g., A neon hologram of a cat driving at top speed"
+            placeholder={sourceVideo ? "e.g., 'Make this a vintage 8mm film'" : "e.g., 'A neon hologram of a cat driving'"}
             className="w-full h-24 p-3 bg-gray-900 border border-gray-600 rounded-md focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors text-sm text-gray-200 resize-none"
         />
-        <div>
-            <label className="block text-sm font-medium text-gray-400 text-left mb-2">Voice Over (Optional)</label>
-            <textarea
-                value={voiceOverText}
-                onChange={(e) => setVoiceOverText(e.target.value)}
-                placeholder="e.g., In a world of chrome and circuits, one cool cat takes the wheel..."
-                className="w-full h-20 p-3 bg-gray-900 border border-gray-600 rounded-md focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors text-sm text-gray-200 resize-none"
-            />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2 text-left">
-                <label className="block text-sm font-medium text-gray-400">Aspect Ratio</label>
-                <div className="flex space-x-2 rounded-lg bg-gray-900 p-1">
-                    {aspectRatios.map((ratio) => (
-                        <button
-                            key={ratio}
-                            type="button"
-                            onClick={() => setAspectRatio(ratio)}
-                            className={`w-full rounded-md px-3 py-2 text-sm font-semibold transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-cyan-500 ${
-                                aspectRatio === ratio
-                                    ? 'bg-cyan-600 text-white shadow-sm'
-                                    : 'text-gray-300 hover:bg-gray-700/50'
-                            }`}
-                        >
-                            {ratio}
-                        </button>
-                    ))}
+        
+        {!sourceVideo && (
+            <>
+                <div>
+                    <label className="block text-sm font-medium text-gray-400 text-left mb-2">Voice Over (Optional)</label>
+                    <textarea
+                        value={voiceOverText}
+                        onChange={(e) => setVoiceOverText(e.target.value)}
+                        placeholder="e.g., In a world of chrome and circuits..."
+                        className="w-full h-20 p-3 bg-gray-900 border border-gray-600 rounded-md focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors text-sm text-gray-200 resize-none"
+                    />
                 </div>
-            </div>
-            <div className="space-y-2 text-left">
-                <label htmlFor="duration-slider" className="block text-sm font-medium text-gray-400">Duration ({duration}s)</label>
-                <input
-                    id="duration-slider"
-                    type="range"
-                    min="4"
-                    max="60"
-                    step="1"
-                    value={duration}
-                    onChange={(e) => setDuration(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-600"
-                />
-            </div>
-        </div>
+                <div className="space-y-2 text-left">
+                    <label className="block text-sm font-medium text-gray-400">Aspect Ratio</label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {aspectRatios.map((ratio) => (
+                            <label
+                                key={ratio}
+                                htmlFor={`ratio-${ratio}`}
+                                className={`relative flex items-center justify-center p-3 rounded-lg border cursor-pointer transition-colors duration-200 focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-gray-800 focus-within:ring-cyan-500 ${
+                                    aspectRatio === ratio
+                                        ? 'bg-cyan-600/20 border-cyan-500 text-cyan-300'
+                                        : 'bg-gray-900 border-gray-600 hover:bg-gray-800 text-gray-300'
+                                }`}
+                            >
+                                <input
+                                    type="radio"
+                                    id={`ratio-${ratio}`}
+                                    name="aspectRatio"
+                                    value={ratio}
+                                    checked={aspectRatio === ratio}
+                                    onChange={() => setAspectRatio(ratio)}
+                                    className="sr-only"
+                                />
+                                <span className="text-sm font-semibold">{ratio}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            </>
+        )}
+
         <button
             onClick={handleGenerate}
             disabled={!prompt.trim()}
             className="w-full px-6 py-3 bg-cyan-600 text-white font-bold rounded-lg shadow-md hover:bg-cyan-700 transition-all disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
         >
             <VideoCameraIcon className="w-5 h-5" />
-            <span>Generate Video</span>
+            <span>{sourceVideo ? 'Remix Video' : 'Generate Video'}</span>
         </button>
       </div>
     </div>

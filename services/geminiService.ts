@@ -192,7 +192,7 @@ export const generateVideo = async (prompt: string, aspectRatio: string, duratio
     }
 }
 
-export const remixVideo = async (videoFile: File, prompt: string, durationSecs: number): Promise<string> => {
+export const remixVideo = async (videoFile: File, prompt: string): Promise<string> => {
     try {
         const { base64Data, mimeType } = await extractFrameFromVideo(videoFile);
         
@@ -205,7 +205,7 @@ export const remixVideo = async (videoFile: File, prompt: string, durationSecs: 
             },
             config: {
                 numberOfVideos: 1,
-                durationSecs: durationSecs,
+                durationSecs: 8, // Using a default duration for remixes
             }
         });
 
